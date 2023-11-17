@@ -1,5 +1,7 @@
 # Robo CNI configuration
 
+![](docs/robocni.png | width=350)
+
 Automatically creates CNI configurations and net-attach-defs using [ollama](https://github.com/jmorganca/ollama).
 
 # Usage
@@ -9,6 +11,24 @@ Clone this and build it with the `./hack/build-go.sh`.
 ```
 export OLLAMA_HOST=192.168.50.199
 ./robocni "give me a macvlan CNI configuration mastered to eth0 using whereabouts ipam ranged on 192.0.2.0/24"
+```
+
+Or with output:
+
+```
+$ robocni --json "macvlan with whereabouts cni on 192.0.2.0/24"
+{
+    "cniVersion": "0.3.1",
+    "name": "whereaboutsexample",
+    "type": "macvlan",
+    "master": "eth0",
+    "mode": "bridge",
+    "ipam": {
+        "type": "whereabouts",
+        "range": "192.0.2.0/24",
+        "exclude": []
+    }
+}
 ```
 
 # The "looprobocni" tool
