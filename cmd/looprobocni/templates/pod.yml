@@ -9,7 +9,7 @@ spec:
   containers:
   - name: testpod-left
     command: ["/bin/ash", "-c", "trap : TERM INT; sleep infinity & wait"]
-    image: alpine
+    image: quay.io/jitesoft/alpine
     securityContext:
       privileged: true
       capabilities:
@@ -25,7 +25,7 @@ spec:
   containers:
   - name: testpod-right
     command: ["/bin/ash", "-c", "trap : TERM INT; sleep infinity & wait"]
-    image: alpine
+    image: quay.io/jitesoft/alpine
     securityContext:
       privileged: true
       capabilities:
