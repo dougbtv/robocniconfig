@@ -1,6 +1,6 @@
 # Robo CNI configuration
 
-![](docs/robocni.png | width=350)
+<img src="docs/robocni.png" width="350">
 
 Automatically creates CNI configurations and net-attach-defs using [ollama](https://github.com/jmorganca/ollama).
 
