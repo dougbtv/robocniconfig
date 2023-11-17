@@ -1,7 +1,7 @@
 #!/bin/bash
 
-# Name of your Go source file without the .go extension
-APP_NAME="robocni"
+ROBOCNI="robocni"
+LOOPROBOCNI="looprobocni"
 
 # Ensure Go is installed
 if ! command -v go &> /dev/null
@@ -10,22 +10,33 @@ then
     exit 1
 fi
 
-# Set Go Path (modify this if your Go path is different)
+# Set Go Path
 export GOPATH=$HOME/go
 
-# Navigate to your Go project's directory (adjust as needed)
+# Navigate to the root of your Go project (adjust as needed)
 cd "$(dirname "$0")/.."
 
-# Build the Go application
-echo "Building $APP_NAME..."
-go build -o $APP_NAME
+# Create the bin directory if it doesn't exist
+mkdir -p bin
+
+# Build the robocni binary
+echo "Building $ROBOCNI..."
+go build -o bin/$ROBOCNI ./cmd/robocni/$ROBOCNI.go
 
 # Check if build was successful
-if [ $? -eq 0 ]; then
-    echo "Build successful."
-    # echo "Running $APP_NAME..."
-    # ./$APP_NAME
-else
-    echo "Build failed."
+if [ $? -ne 0 ]; then
+    echo "Build failed for $ROBOCNI."
     exit 1
 fi
+
+# Build the looprobocni binary
+echo "Building $LOOPROBOCNI..."
+go build -o bin/$LOOPROBOCNI ./cmd/looprobocni/$LOOPROBOCNI.go
+
+# Check if build was successful
+if [ $? -ne 0 ]; then
+    echo "Build failed for $LOOPROBOCNI."
+    exit 1
+fi
+
+echo "Build successful."
