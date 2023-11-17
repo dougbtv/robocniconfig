@@ -7,13 +7,13 @@ import (
 	"errors"
 	"flag"
 	"fmt"
-	"html/template"
 	"io/ioutil"
 	"net"
 	"net/http"
 	"os"
 	"os/exec"
 	"strings"
+	"text/template"
 )
 
 // Define a struct to unmarshal the JSON response
@@ -26,20 +26,28 @@ type LLMResponse struct {
 
 // Embed the file
 //
-//go:embed base_query.txt
+//go:embed templates/base_query.txt
 var basequeryBlob embed.FS
 
-// Define a struct for template data
+//go:embed templates/netattachdef_template.txt
+var netattachdefBlob embed.FS
+
+// Template Structs
 type QueryTemplateData struct {
 	Interfaces string
 	Routes     string
 	Hint       string
 }
 
+type NetAttachDefTemplateData struct {
+	CNIConfig string
+	CNIName   string
+}
+
 func main() {
 
 	// Define flags
-	dryRun := flag.Bool("dry-run", false, "Perform a dry run without making any changes")
+	useJsonOutput := flag.Bool("json", false, "Output just the CNI json instead of a net-attach-def")
 	ollamaHost := flag.String("host", "", "The IP address of the ollama host")
 	ollamaPort := flag.String("port", "11434", "The port address of the ollama service")
 	help := flag.Bool("help", false, "Display help information")
@@ -47,9 +55,19 @@ func main() {
 	// Parse the flags
 	flag.Parse()
 
+	// Get non-flag arguments
+	args := flag.Args()
+	if len(args) == 0 {
+		logErr("You must provide a 'hint' as the last parameter, for example run it like: './robocni \"Use bridge CNI and whereabouts CNI with 192.168.50.0/24 range\"'")
+		os.Exit(1)
+	}
+
+	// The last positional argument
+	userHint := args[len(args)-1]
+
 	// Check if help was requested
 	if *help {
-		fmt.Println("Usage of robocni:")
+		logErr("Usage of robocni:")
 		flag.PrintDefaults() // This will print out all defined flags
 		os.Exit(0)
 	}
@@ -57,13 +75,13 @@ func main() {
 	if *ollamaHost == "" {
 		*ollamaHost = os.Getenv("OLLAMA_HOST")
 		if *ollamaHost == "" {
-			fmt.Println("Please set --host or the OLLAMA_HOST environment variable.")
+			logErr("Please set --host or the OLLAMA_HOST environment variable.")
 			os.Exit(1)
 		}
 	}
 
 	// Introspect the Host
-	fmt.Println("Listing Network Interfaces:")
+	// logErr("Listing Network Interfaces:")
 
 	ifs, err := listNetworkInterfaces()
 	if err != nil {
@@ -78,63 +96,92 @@ func main() {
 	data := QueryTemplateData{
 		Interfaces: ifs,
 		Routes:     routes,
+		Hint:       userHint,
 	}
 
-	var jsonStr string
+	var extractedjson, cniname string
+	found := false
 	for i := 0; i < 5; i++ {
 
 		// Step 2: Query the LLM
 		query := templateQuery(data)
 		response, err := queryLLM(*ollamaHost, *ollamaPort, query)
 		if err != nil {
-			fmt.Println(err)
+			logErr(fmt.Sprintf("%v", err))
 		} else {
-			fmt.Println("LLM Response:", response)
+			// logErr("!bang LLM Response:", response)
 		}
 
-		jsonStr, err = parseAndValidateJSON(response)
+		extractedjson, cniname, err = parseAndValidateJSON(response)
 		if err != nil {
-			fmt.Printf("Attempt %d failed: %v\n", i+1, err)
+			logErr(fmt.Sprintf("Attempt %d/5 failed: %v", i+1, err))
 			continue
 		}
 
+		found = true
 		break
 
 	}
 
-	fmt.Println("Valid JSON:", jsonStr)
+	if !found {
+		logErr("LLM Query failed in 5 tries :( #failburger")
+		os.Exit(1)
+	}
 
-	if *dryRun {
-		fmt.Println("Dry run:", jsonStr)
+	logErr(fmt.Sprintf("Generating net-attach-def for: %v", cniname))
+	// logErr("Valid JSON:", extractedjson)
+
+	netattachdefdata := NetAttachDefTemplateData{
+		CNIName:   cniname,
+		CNIConfig: strings.TrimSpace(extractedjson),
+	}
+
+	renderednetattachdef := templateNetAttachDef(netattachdefdata)
+
+	// Just output the net-attach-def, or, JSON if requested
+	if *useJsonOutput {
+		fmt.Printf(extractedjson)
+	} else {
+		fmt.Printf(renderednetattachdef)
 		os.Exit(0)
 	}
 
 }
 
-func parseAndValidateJSON(response string) (string, error) {
+func logErr(str string) {
+	fmt.Fprintln(os.Stderr, str)
+}
+
+func parseAndValidateJSON(response string) (string, string, error) {
 	start := strings.Index(response, "```")
 	end := strings.LastIndex(response, "```")
 
 	if start == -1 || end == -1 || start == end {
-		return "", errors.New("no valid backtick-enclosed text found")
+		return "", "", errors.New("no valid backtick-enclosed text found")
 	}
 
 	// Extract text between backticks
 	jsonStr := response[start+3 : end]
 
-	// Check if the text is valid JSON
-	var js json.RawMessage
-	err := json.Unmarshal([]byte(jsonStr), &js)
+	// Unmarshal the JSON into a map
+	var dataMap map[string]interface{}
+	err := json.Unmarshal([]byte(jsonStr), &dataMap)
 	if err != nil {
-		return "", fmt.Errorf("invalid JSON: %v", err)
+		return "", "", fmt.Errorf("invalid JSON: %v", err)
 	}
 
-	return jsonStr, nil
+	// Extract the "name" field
+	name, ok := dataMap["name"].(string)
+	if !ok {
+		return "", "", errors.New("name field not found or not a string")
+	}
+
+	return jsonStr, name, nil
 }
 
 func templateQuery(data QueryTemplateData) string {
 	// Read the embedded template file
-	tmpl, err := basequeryBlob.ReadFile("base_query.txt")
+	tmpl, err := basequeryBlob.ReadFile("templates/base_query.txt")
 	if err != nil {
 		panic(err)
 	}
@@ -153,14 +200,39 @@ func templateQuery(data QueryTemplateData) string {
 	}
 
 	// Print the result
-	fmt.Println(tpl.String())
+	// logErr(tpl.String())
+	return tpl.String()
+}
+
+func templateNetAttachDef(data NetAttachDefTemplateData) string {
+	// Read the embedded template file
+	tmpl, err := netattachdefBlob.ReadFile("templates/netattachdef_template.txt")
+	if err != nil {
+		panic(err)
+	}
+
+	// Parse the template
+	t, err := template.New("template").Parse(string(tmpl))
+	if err != nil {
+		panic(err)
+	}
+
+	// Execute the template with the data
+	var tpl bytes.Buffer
+	err = t.Execute(&tpl, data)
+	if err != nil {
+		panic(err)
+	}
+
+	// Print the result
+	// logErr(tpl.String())
 	return tpl.String()
 }
 
 func listNetworkInterfaces() (string, error) {
 	interfaces, err := net.Interfaces()
 	if err != nil {
-		fmt.Println(err)
+		logErr(fmt.Sprintf("%v", err))
 		return "", fmt.Errorf("error listing interfaces: %v", err)
 	}
 
