@@ -48,6 +48,7 @@ func main() {
 
 	// Define flags
 	useJsonOutput := flag.Bool("json", false, "Output just the CNI json instead of a net-attach-def")
+	useDebug := flag.Bool("debug", false, "Show debug output, especially entire response from LLM")
 	ollamaHost := flag.String("host", "", "The IP address of the ollama host")
 	ollamaPort := flag.String("port", "11434", "The port address of the ollama service")
 	help := flag.Bool("help", false, "Display help information")
@@ -105,7 +106,7 @@ func main() {
 
 		// Step 2: Query the LLM
 		query := templateQuery(data)
-		response, err := queryLLM(*ollamaHost, *ollamaPort, query)
+		response, err := queryLLM(*ollamaHost, *ollamaPort, *useDebug, query)
 		if err != nil {
 			logErr(fmt.Sprintf("%v", err))
 		} else {
@@ -128,7 +129,7 @@ func main() {
 		os.Exit(1)
 	}
 
-	logErr(fmt.Sprintf("Generating net-attach-def for: %v", cniname))
+	// logErr(fmt.Sprintf("Generating net-attach-def for: %v", cniname))
 	// logErr("Valid JSON:", extractedjson)
 
 	netattachdefdata := NetAttachDefTemplateData{
@@ -256,7 +257,7 @@ func getIPRoute() (string, error) {
 	return out.String(), nil
 }
 
-func queryLLM(ollamaHost string, ollamaPort string, query string) (string, error) {
+func queryLLM(ollamaHost string, ollamaPort string, usedebug bool, query string) (string, error) {
 	// Define the URL and payload
 	url := "http://" + ollamaHost + ":" + ollamaPort + "/api/generate"
 	payload := map[string]string{"model": "llama2:13b", "prompt": query}
@@ -304,5 +305,8 @@ func queryLLM(ollamaHost string, ollamaPort string, query string) (string, error
 		finalResponse += response.Response
 	}
 
+	if usedebug {
+		logErr(strings.TrimSpace(finalResponse))
+	}
 	return strings.TrimSpace(finalResponse), nil
 }

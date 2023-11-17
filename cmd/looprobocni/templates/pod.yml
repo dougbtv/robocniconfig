@@ -1,0 +1,32 @@
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: testpod-left
+  annotations:
+    k8s.v1.cni.cncf.io/networks: {{.NetAttachDefName}}
+spec:
+  containers:
+  - name: testpod-left
+    command: ["/bin/ash", "-c", "trap : TERM INT; sleep infinity & wait"]
+    image: alpine
+    securityContext:
+      privileged: true
+      capabilities:
+        add: ["NET_ADMIN"]
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: testpod-right
+  annotations:
+    k8s.v1.cni.cncf.io/networks: {{.NetAttachDefName}}
+spec:
+  containers:
+  - name: testpod-right
+    command: ["/bin/ash", "-c", "trap : TERM INT; sleep infinity & wait"]
+    image: alpine
+    securityContext:
+      privileged: true
+      capabilities:
+        add: ["NET_ADMIN"]
