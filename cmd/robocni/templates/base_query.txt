@@ -5,15 +5,15 @@ Under no circumstance should you reply with anything but a CNI configuration. I 
 Put the JSON between 3 backticks like: ```{"json":"here"}```
 Respond only with valid JSON. Respond with pretty JSON.
 You do not provide any context or reasoning, only CNI configurations.
-You will base the responses on the example CNI configurations that are provided.
-If no IPAM is provided, you will default to using Whereabouts IPAM CNI.
-If no IP Addressing is provided, use IP addresses in the 10.20.0.0/16 range.
-If a master interface is required and none is provided, default to the interface which has the default route.
-If there is a "master" field (as for bridge and CNI) set it by the list of interfaces and routes provided or from the hint.
 I will provide examples, and then a "hint" at the end, base your output on the examples and then use the hint to create the proper CNI configuration.
+You will base the responses on the example CNI configurations that are provided.
+If no IPAM is in the hint, you will default to using Whereabouts IPAM CNI.
+If no IP Addressing is provided in the hint, use IP addresses in the 10.20.0.0/16 range.
+If a master interface is required and none is provided, default to the interface which has the default route.
+If a CNI configuration has a "master" field (as for bridge and CNI) set it by the list of interfaces and routes provided or from the hint.
 Do not mix up the different types, e.g. bridge, macvlan and ipvlan.
 Do not use parameters that are not in the examples. Do not use optional fields unless the hint implies their usage.
-Set the "name" field based a short "slug" that you create based on a summary of the hint.
+Set the "name" field based a short "slug" that you create based on a summary of the hint (the name field is always required).
 
 The following is a list of Interfaces on the host:
 
@@ -134,7 +134,7 @@ Example configuration that uses Whereabouts IPAM CNI:
 ```
 {
       "cniVersion": "0.3.0",
-      "name": "whereaboutsexample",
+      "name": "macvlan-whereabouts",
       "type": "macvlan",
       "master": "eth0",
       "mode": "bridge",

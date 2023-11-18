@@ -52,7 +52,7 @@ func main() {
 	var failedpodcreate int
 	var pingerrors int
 	var totalruns int
-	// TODO: This is stupid, it should be set to the number of lines in the hints file.
+	lastnetattachdef := ""
 	numhintlines, err := countLinesofHint(*promptFilePath)
 	if err != nil {
 		fmt.Println("Could not open prompt file: " + *promptFilePath + "  make sure to set --promptfile or name it prompts.txt")
@@ -64,19 +64,13 @@ func main() {
 		totalruns++
 
 		if i > 1 {
-			// Generate report
-			fmt.Printf("---\n")
-			fmt.Printf("Run number: %d\n", i-1)
-			fmt.Printf("Total Errors: %d (%.2f%%)\n", numerrors, (float64(numerrors)/float64(i-1))*100)
-			fmt.Printf("Generation Errors: %d (%.2f%%)\n", numgenerationerrors, (float64(numgenerationerrors)/float64(i-1))*100)
-			fmt.Printf("Failed Pod Creations: %d (%.2f%%)\n", failedpodcreate, (float64(failedpodcreate)/float64(i-1))*100)
-			fmt.Printf("Ping Errors: %d (%.2f%%)\n", pingerrors, (float64(pingerrors)/float64(i-1))*100)
+			generateReport(i-1, numerrors, numgenerationerrors, failedpodcreate, pingerrors, statsArray)
+		}
 
-			// Print stats array
-			fmt.Println("Stats Array:")
-			for j, stat := range statsArray {
-				fmt.Printf("  Hint %d: Runs: %d, Successes: %d\n", j+1, stat.Runs, stat.Successes)
-			}
+		// Delete the last netattachdef.
+		if lastnetattachdef != "" {
+			_ = kubectlCreate(lastnetattachdef, true)
+			lastnetattachdef = ""
 		}
 
 		fmt.Printf("------------------ RUN # %v\n", i)
@@ -103,14 +97,16 @@ func main() {
 		}
 		fmt.Println("Parsed name: " + parsedname)
 
+		// Delete for redundancy in case.
 		_ = kubectlCreate(netattachdefstr, true)
+		// Then create.
 		err = kubectlCreate(netattachdefstr, false)
 		if err != nil {
 			fmt.Printf("Error doing kubectl create for net attach def: %s\n", err)
 			numerrors++
 			continue
 		}
-		// defer kubectlCreate(netattachdefstr, true)
+		lastnetattachdef = netattachdefstr
 
 		// Testing the method...
 		// podresult, err := runKubectl("get pods -o wide")
@@ -183,20 +179,29 @@ func main() {
 
 	}
 
-	// Generate report
-	fmt.Printf("---\n")
-	fmt.Printf("Run number: %d\n", totalruns)
-	fmt.Printf("Total Errors: %d (%.2f%%)\n", numerrors, (float64(numerrors)/float64(totalruns))*100)
-	fmt.Printf("Generation Errors: %d (%.2f%%)\n", numgenerationerrors, (float64(numgenerationerrors)/float64(totalruns))*100)
-	fmt.Printf("Failed Pod Creations: %d (%.2f%%)\n", failedpodcreate, (float64(failedpodcreate)/float64(totalruns))*100)
-	fmt.Printf("Ping Errors: %d (%.2f%%)\n", pingerrors, (float64(pingerrors)/float64(totalruns))*100)
+	generateReport(totalruns, numerrors, numgenerationerrors, failedpodcreate, pingerrors, statsArray)
 
-	// Print stats array
+}
+
+func generateReport(runNumber, numErrors, numGenerationErrors, failedPodCreate, pingErrors int, statsArray []Stats) {
+	fmt.Printf("---\n")
+	fmt.Printf("Run number: %d\n", runNumber)
+	fmt.Printf("Total Errors: %d (%.2f%%)\n", numErrors, percent(numErrors, runNumber))
+	fmt.Printf("Generation Errors: %d (%.2f%%)\n", numGenerationErrors, percent(numGenerationErrors, runNumber))
+	fmt.Printf("Failed Pod Creations: %d (%.2f%%)\n", failedPodCreate, percent(failedPodCreate, runNumber))
+	fmt.Printf("Ping Errors: %d (%.2f%%)\n", pingErrors, percent(pingErrors, runNumber))
+
 	fmt.Println("Stats Array:")
 	for j, stat := range statsArray {
 		fmt.Printf("  Hint %d: Runs: %d, Successes: %d\n", j+1, stat.Runs, stat.Successes)
 	}
+}
 
+func percent(count, total int) float64 {
+	if total == 0 {
+		return 0
+	}
+	return (float64(count) / float64(total)) * 100
 }
 
 func getIPForNet1(podName string) (string, error) {
