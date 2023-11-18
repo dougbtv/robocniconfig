@@ -2,18 +2,20 @@
 
 <img src="docs/robocni.png" width="350">
 
-Automatically creates CNI configurations and net-attach-defs using [ollama](https://github.com/jmorganca/ollama).
+Uses an LLM to generate CNI configurations and net-attach-defs (like for [Multus CNI](https://github.com/k8snetworkplumbingwg/multus-cni)) from your hints. using [ollama](https://github.com/jmorganca/ollama).
 
 # Usage
 
 Clone this and build it with the `./hack/build-go.sh`.
+
+Then, you can run `robocni` and give it a "hint" as to what kind of CNI configuration you'd like to generate.
 
 ```
 export OLLAMA_HOST=192.168.50.199
 ./robocni "give me a macvlan CNI configuration mastered to eth0 using whereabouts ipam ranged on 192.0.2.0/24"
 ```
 
-Or with output:
+It generates net-attach-defs by default:
 
 ```
 $ robocni --json "macvlan with whereabouts cni on 192.0.2.0/24"
