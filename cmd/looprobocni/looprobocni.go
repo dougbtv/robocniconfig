@@ -69,7 +69,7 @@ func main() {
 
 		// Delete the last netattachdef.
 		if lastnetattachdef != "" {
-			_ = kubectlCreate(lastnetattachdef, true)
+			_ = kubectlDelete(lastnetattachdef)
 			lastnetattachdef = ""
 		}
 
@@ -98,9 +98,9 @@ func main() {
 		fmt.Println("Parsed name: " + parsedname)
 
 		// Delete for redundancy in case.
-		_ = kubectlCreate(netattachdefstr, true)
+		_ = kubectlDelete(netattachdefstr)
 		// Then create.
-		err = kubectlCreate(netattachdefstr, false)
+		err = kubectlCreate(netattachdefstr)
 		if err != nil {
 			fmt.Printf("Error doing kubectl create for net attach def: %s\n", err)
 			numerrors++
@@ -125,8 +125,8 @@ func main() {
 		fmt.Println("Spinning up pods...")
 
 		// Delete (with confidence) then create pod.
-		_ = kubectlCreate(renderedpod, true)
-		err = kubectlCreate(renderedpod, false)
+		_ = kubectlDelete(renderedpod)
+		err = kubectlCreate(renderedpod)
 		if err != nil {
 			fmt.Printf("Error doing kubectl create for pods: %s\n", err)
 			numerrors++
@@ -299,7 +299,15 @@ func templatePod(data PodTemplateData) string {
 	return tpl.String()
 }
 
-func kubectlCreate(filecontents string, delete bool) error {
+func kubectlDelete(filecontents string) error {
+	return kubectlResourceHandler(filecontents, false)
+}
+
+func kubectlCreate(filecontents string) error {
+	return kubectlResourceHandler(filecontents, true)
+}
+
+func kubectlResourceHandler(filecontents string, delete bool) error {
 	// Create a temp file
 	tmpFile, err := ioutil.TempFile("", "example.*.yml")
 	if err != nil {

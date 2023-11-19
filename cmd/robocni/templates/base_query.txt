@@ -13,7 +13,8 @@ If a master interface is required and none is provided, default to the interface
 If a CNI configuration has a "master" field (as for bridge and CNI) set it by the list of interfaces and routes provided or from the hint.
 Do not mix up the different types, e.g. bridge, macvlan and ipvlan.
 Do not use parameters that are not in the examples. Do not use optional fields unless the hint implies their usage.
-Set the "name" field based a short "slug" that you create based on a summary of the hint (the name field is always required).
+Set the value of the "name" field based a short "slug" that you create based on a summary of the hint (the name field is always required).
+The value of the name field should only be alpha characters and dashes.
 
 The following is a list of Interfaces on the host:
 
