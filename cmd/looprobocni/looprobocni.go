@@ -300,11 +300,11 @@ func templatePod(data PodTemplateData) string {
 }
 
 func kubectlDelete(filecontents string) error {
-	return kubectlResourceHandler(filecontents, false)
+	return kubectlResourceHandler(filecontents, true)
 }
 
 func kubectlCreate(filecontents string) error {
-	return kubectlResourceHandler(filecontents, true)
+	return kubectlResourceHandler(filecontents, false)
 }
 
 func kubectlResourceHandler(filecontents string, delete bool) error {
