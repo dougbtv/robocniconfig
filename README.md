@@ -2,7 +2,11 @@
 
 <img src="docs/robocni.png" width="350">
 
-Uses an LLM to generate CNI configurations and net-attach-defs (like for [Multus CNI](https://github.com/k8snetworkplumbingwg/multus-cni)) from your hints. using [ollama](https://github.com/jmorganca/ollama).
+Uses a large language model (LLM) to generate CNI configurations and net-attach-defs (like for [Multus CNI](https://github.com/k8snetworkplumbingwg/multus-cni)) from your "hints". using [ollama](https://github.com/jmorganca/ollama).
+
+That is, it's an AI/ML 
+
+I was initially get it to spin up pods ~95% of the time
 
 # Usage
 
@@ -85,4 +89,32 @@ Stats Array:
   Hint 4: Runs: 3, Successes: 3
   Hint 5: Runs: 5, Successes: 5
   Hint 6: Runs: 0, Successes: 0
+```
+
+## Initial results
+
+```
+Run number: 5000
+Total Errors: 481 (9.62%)
+Generation Errors: 254 (5.08%)
+Failed Pod Creations: 226 (4.52%)
+Ping Errors: 0 (0.00%)
+Stats Array:
+  Hint 1: Runs: 786, Successes: 772
+  Hint 2: Runs: 819, Successes: 763
+  Hint 3: Runs: 777, Successes: 768
+  Hint 4: Runs: 703, Successes: 685
+  Hint 5: Runs: 879, Successes: 758
+  Hint 6: Runs: 782, Successes: 773
+```
+
+Given these hints:
+
+```
+give me a macvlan CNI configuration mastered to eth0 using whereabouts ipam ranged on 192.0.2.0/24
+an ipvlan configuration on eth0 with whereabouts for 10.40.0.15/27
+type=macvlan master=eth0 whereabouts=10.30.0.0/24
+ipvlan for eth0, ipam is whereabouts on 192.168.50.100/28 exclude 192.168.50.101/32
+dude hook me up with a macvlan mastered to eth0 with whereabouts on a 10.10.0.0/16
+macvlan eth0 whereabouts 10.40.0.0/24
 ```
