@@ -4,7 +4,7 @@
 
 Uses a large language model (LLM) to generate CNI configurations and net-attach-defs (like for [Multus CNI](https://github.com/k8snetworkplumbingwg/multus-cni)) from your "hints". using [ollama](https://github.com/jmorganca/ollama).
 
-That is, it's an AI/ML 
+That is, it's a way to prompt an AI/ML LLM to get CNI configurations.
 
 I was initially get it to spin up pods ~95% of the time
 
