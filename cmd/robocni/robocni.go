@@ -51,6 +51,7 @@ func main() {
 	useDebug := flag.Bool("debug", false, "Show debug output, especially entire response from LLM")
 	ollamaHost := flag.String("host", "", "The IP address of the ollama host")
 	ollamaPort := flag.String("port", "11434", "The port address of the ollama service")
+	ollamaModel := flag.String("model", "llama2:13b", "The port address of the ollama service")
 	help := flag.Bool("help", false, "Display help information")
 
 	// Parse the flags
@@ -106,7 +107,7 @@ func main() {
 
 		// Step 2: Query the LLM
 		query := templateQuery(data)
-		response, err := queryLLM(*ollamaHost, *ollamaPort, *useDebug, query)
+		response, err := queryLLM(*ollamaHost, *ollamaPort, *ollamaModel, *useDebug, query)
 		if err != nil {
 			logErr(fmt.Sprintf("%v", err))
 		} else {
@@ -257,10 +258,10 @@ func getIPRoute() (string, error) {
 	return out.String(), nil
 }
 
-func queryLLM(ollamaHost string, ollamaPort string, usedebug bool, query string) (string, error) {
+func queryLLM(ollamaHost string, ollamaPort string, ollamaModel string, usedebug bool, query string) (string, error) {
 	// Define the URL and payload
 	url := "http://" + ollamaHost + ":" + ollamaPort + "/api/generate"
-	payload := map[string]string{"model": "llama2:13b", "prompt": query}
+	payload := map[string]string{"model": ollamaModel, "prompt": query}
 	payloadBytes, err := json.Marshal(payload)
 	if err != nil {
 		return "", fmt.Errorf("error marshalling payload: %v", err)
