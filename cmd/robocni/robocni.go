@@ -319,6 +319,8 @@ func queryLLM(ollamaHost string, ollamaPort string, ollamaModel string, usedebug
 
 	if usedebug {
 		logErr(strings.TrimSpace(finalResponse))
+		logErr("---")
+		logErr(string(responseBody))
 	}
 	return strings.TrimSpace(finalResponse), nil
 }
