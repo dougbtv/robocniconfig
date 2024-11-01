@@ -155,15 +155,26 @@ func logErr(str string) {
 }
 
 func parseAndValidateJSON(response string) (string, string, error) {
+	// Find the start of the code block, supporting both ``` and ```json
 	start := strings.Index(response, "```")
-	end := strings.LastIndex(response, "```")
+	if start == -1 {
+		return "", "", errors.New("no valid backtick-enclosed text found")
+	}
 
-	if start == -1 || end == -1 || start == end {
+	// Adjust the start index if it's ```json
+	startOffset := 3
+	if strings.HasPrefix(response[start:], "```json") {
+		startOffset = 7
+	}
+
+	// Find the end of the code block
+	end := strings.LastIndex(response, "```")
+	if end == -1 || start == end {
 		return "", "", errors.New("no valid backtick-enclosed text found")
 	}
 
 	// Extract text between backticks
-	jsonStr := response[start+3 : end]
+	jsonStr := response[start+startOffset : end]
 
 	// Unmarshal the JSON into a map
 	var dataMap map[string]interface{}
