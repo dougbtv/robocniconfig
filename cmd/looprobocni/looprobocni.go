@@ -36,6 +36,7 @@ func main() {
 	ollamaModel := flag.String("model", "llama2:13b", "The port address of the ollama service")
 	numberOfRuns := flag.Int("runs", 1, "Number of runs to run")
 	introspectNetwork := flag.Bool("introspect", false, "Introspect networking on a k8s worker node")
+	useAnnotation := flag.Bool("useannotation", false, "Use the annotation instead of execing the pod")
 	help := flag.Bool("help", false, "Display help information")
 
 	// Parse the flags
@@ -173,7 +174,7 @@ func main() {
 			fmt.Println("Pod right is ready")
 		}
 
-		ip, err := getIPForNet1("testpod-right")
+		ip, err := getIPForNet1("testpod-right", *useAnnotation)
 		if err != nil {
 			fmt.Println("Error getting IP address:", err)
 			numerrors++
@@ -310,35 +311,57 @@ func percent(count, total int) float64 {
 	return (float64(count) / float64(total)) * 100
 }
 
-func getIPForNet1(podName string) (string, error) {
-	// Retrieve network-status annotation
-	command := fmt.Sprintf("get pod %s -o jsonpath={.metadata.annotations.k8s\\.v1\\.cni\\.cncf\\.io/network-status}", podName)
-	// fmt.Println("get pod command: " + command)
-	annotation, err := runKubectl(command)
-	if err != nil {
-		return "", err
-	}
-	// fmt.Println("annotation found: " + annotation)
-
-	// Parse the JSON in the annotation
-	var networkStatuses []struct {
-		Interface string   `json:"Interface"`
-		IPs       []string `json:"ips"`
-	}
-	err = json.Unmarshal([]byte(annotation), &networkStatuses)
-	if err != nil {
-		return "", fmt.Errorf("failed to parse network-status JSON: %v", err)
-	}
-
-	// Find and return the first IP for "net1"
-	for _, status := range networkStatuses {
-		// fmt.Printf("each Network status: %+v", status)
-		if status.Interface == "net1" {
-			if len(status.IPs) > 0 {
-				return status.IPs[0], nil
-			}
-			break
+func getIPForNet1(podName string, useannotation bool) (string, error) {
+	if useannotation {
+		// Retrieve network-status annotation
+		command := fmt.Sprintf("get pod %s -o jsonpath={.metadata.annotations.k8s\\.v1\\.cni\\.cncf\\.io/network-status}", podName)
+		// fmt.Println("get pod command: " + command)
+		annotation, err := runKubectl(command)
+		if err != nil {
+			return "", err
 		}
+		// fmt.Println("annotation found: " + annotation)
+
+		// Parse the JSON in the annotation
+		var networkStatuses []struct {
+			Interface string   `json:"Interface"`
+			IPs       []string `json:"ips"`
+		}
+		err = json.Unmarshal([]byte(annotation), &networkStatuses)
+		if err != nil {
+			return "", fmt.Errorf("failed to parse network-status JSON: %v", err)
+		}
+
+		// Find and return the first IP for "net1"
+		for _, status := range networkStatuses {
+			// fmt.Printf("each Network status: %+v", status)
+			if status.Interface == "net1" {
+				if len(status.IPs) > 0 {
+					return status.IPs[0], nil
+				}
+				break
+			}
+		}
+	} else {
+		// Execute kubectl exec to get the full output of `ip a`
+		cmd := exec.Command("kubectl", "exec", podName, "--", "ip", "a")
+		var out bytes.Buffer
+		cmd.Stdout = &out
+
+		// Run the command
+		if err := cmd.Run(); err != nil {
+			return "", fmt.Errorf("failed to execute kubectl command: %v", err)
+		}
+
+		// Use a regex to find the IP for `net1`
+		// This pattern looks for `net1` followed by lines containing `inet <IP>`
+		re := regexp.MustCompile(`net1[^\n]*\n[^\n]*\n[^\n]*inet (\S+)`)
+		matches := re.FindStringSubmatch(out.String())
+		if len(matches) > 1 {
+			ip := strings.Split(matches[1], "/")[0] // Remove CIDR suffix if present
+			return ip, nil
+		}
+
 	}
 
 	return "", fmt.Errorf("no IP found for net1")
