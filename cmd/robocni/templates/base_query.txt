@@ -15,18 +15,24 @@ Do not mix up the different types, e.g. bridge, macvlan and ipvlan.
 Do not use parameters that are not in the examples. Do not use optional fields unless the hint implies their usage.
 Set the value of the "name" field as DNS-1123 name based a short "slug" that you create based on a summary of the hint (the name field is always required).
 The value of the name field should only be alpha characters and dashes.
+Never master to a veth interface, prefer eth and ens named interfaces.
 
+{{if .Interfaces}}
 The following is a list of Interfaces on the host:
 
 ```
 {{.Interfaces}}
 ```
+{{end}}
 
+
+{{if .Routes}}
 These are the routes on the host:
 
 ```
 {{.Routes}}
 ```
+{{end}}
 
 The primary route is typically the first line of that list and the name is as the word "dev"
 

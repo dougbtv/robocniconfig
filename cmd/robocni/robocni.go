@@ -8,10 +8,8 @@ import (
 	"flag"
 	"fmt"
 	"io/ioutil"
-	"net"
 	"net/http"
 	"os"
-	"os/exec"
 	"strings"
 	"text/template"
 )
@@ -52,10 +50,19 @@ func main() {
 	ollamaHost := flag.String("host", "", "The IP address of the ollama host")
 	ollamaPort := flag.String("port", "11434", "The port address of the ollama service")
 	ollamaModel := flag.String("model", "llama2:13b", "The port address of the ollama service")
+	fileRoutes := flag.String("routefile", "", "File containing the output of 'ip route' command")
+	fileIPAddress := flag.String("ipafile", "", "File containing the output of 'ip address' command")
 	help := flag.Bool("help", false, "Display help information")
 
 	// Parse the flags
 	flag.Parse()
+
+	// Check if help was requested
+	if *help {
+		logErr("Usage of robocni:")
+		flag.PrintDefaults() // This will print out all defined flags
+		os.Exit(0)
+	}
 
 	// Get non-flag arguments
 	args := flag.Args()
@@ -66,13 +73,6 @@ func main() {
 
 	// The last positional argument
 	userHint := args[len(args)-1]
-
-	// Check if help was requested
-	if *help {
-		logErr("Usage of robocni:")
-		flag.PrintDefaults() // This will print out all defined flags
-		os.Exit(0)
-	}
 
 	if *ollamaHost == "" {
 		*ollamaHost = os.Getenv("OLLAMA_HOST")
@@ -85,14 +85,35 @@ func main() {
 	// Introspect the Host
 	// logErr("Listing Network Interfaces:")
 
-	ifs, err := listNetworkInterfaces()
-	if err != nil {
-		panic(err)
+	var ifs, routes string
+	// Check and read the interface file if provided
+	if *fileIPAddress != "" {
+		if _, err := os.Stat(*fileIPAddress); os.IsNotExist(err) {
+			fmt.Printf("Error: file %s does not exist\n", *fileIPAddress)
+			os.Exit(1)
+		} else {
+			content, err := ioutil.ReadFile(*fileIPAddress)
+			if err != nil {
+				fmt.Printf("Error reading IP address file %s: %v\n", *fileIPAddress, err)
+				os.Exit(1)
+			}
+			ifs = string(content)
+		}
 	}
 
-	routes, err := getIPRoute()
-	if err != nil {
-		panic(err)
+	// Check and read the route file if provided
+	if *fileRoutes != "" {
+		if _, err := os.Stat(*fileRoutes); os.IsNotExist(err) {
+			fmt.Printf("Error: file %s does not exist\n", *fileRoutes)
+			os.Exit(1)
+		} else {
+			content, err := ioutil.ReadFile(*fileRoutes)
+			if err != nil {
+				fmt.Printf("Error reading routes file %s: %v\n", *fileRoutes, err)
+				os.Exit(1)
+			}
+			routes = string(content)
+		}
 	}
 
 	data := QueryTemplateData{
@@ -100,7 +121,6 @@ func main() {
 		Routes:     routes,
 		Hint:       userHint,
 	}
-
 	var extractedjson, cniname string
 	found := false
 	for i := 0; i < 5; i++ {
@@ -242,32 +262,32 @@ func templateNetAttachDef(data NetAttachDefTemplateData) string {
 	return tpl.String()
 }
 
-func listNetworkInterfaces() (string, error) {
-	interfaces, err := net.Interfaces()
-	if err != nil {
-		logErr(fmt.Sprintf("%v", err))
-		return "", fmt.Errorf("error listing interfaces: %v", err)
-	}
+// func listNetworkInterfaces() (string, error) {
+// 	interfaces, err := net.Interfaces()
+// 	if err != nil {
+// 		logErr(fmt.Sprintf("%v", err))
+// 		return "", fmt.Errorf("error listing interfaces: %v", err)
+// 	}
 
-	var result string
-	for _, intf := range interfaces {
-		result += fmt.Sprintf("%v\n", intf.Name)
-		// Add more details as needed
-	}
+// 	var result string
+// 	for _, intf := range interfaces {
+// 		result += fmt.Sprintf("%v\n", intf.Name)
+// 		// Add more details as needed
+// 	}
 
-	return result, nil
-}
+// 	return result, nil
+// }
 
-func getIPRoute() (string, error) {
-	cmd := exec.Command("ip", "route")
-	var out bytes.Buffer
-	cmd.Stdout = &out
-	err := cmd.Run()
-	if err != nil {
-		return "", err
-	}
-	return out.String(), nil
-}
+// func getIPRoute() (string, error) {
+// 	cmd := exec.Command("ip", "route")
+// 	var out bytes.Buffer
+// 	cmd.Stdout = &out
+// 	err := cmd.Run()
+// 	if err != nil {
+// 		return "", err
+// 	}
+// 	return out.String(), nil
+// }
 
 func queryLLM(ollamaHost string, ollamaPort string, ollamaModel string, usedebug bool, query string) (string, error) {
 	// Define the URL and payload

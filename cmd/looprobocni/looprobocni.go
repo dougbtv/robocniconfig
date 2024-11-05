@@ -11,6 +11,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"text/template"
 	"time"
@@ -26,7 +27,10 @@ func main() {
 	// Define flags
 	promptFilePath := flag.String("promptfile", "prompts.txt", "Output just the CNI json instead of a net-attach-def")
 	ollamaHost := flag.String("host", "", "The IP address of the ollama host")
+	ollamaPort := flag.String("port", "11434", "The port address of the ollama service")
+	ollamaModel := flag.String("model", "llama2:13b", "The port address of the ollama service")
 	numberOfRuns := flag.Int("runs", 1, "Number of runs to run")
+	introspectNetwork := flag.Bool("introspect", false, "Introspect networking on a k8s worker node")
 	help := flag.Bool("help", false, "Display help information")
 
 	// Parse the flags
@@ -45,6 +49,17 @@ func main() {
 			fmt.Println("Please set --host or the OLLAMA_HOST environment variable.")
 			os.Exit(1)
 		}
+	}
+
+	// Network introspection
+	if *introspectNetwork {
+		// kubectl get nodes --no-headers | grep -m 1 -v control-plane | awk '{print $1}'
+		err := introspectNodeNetwork()
+		if err != nil {
+			fmt.Println("Error introspecting node network: ", err)
+			os.Exit(1)
+		}
+		fmt.Println("First worker node: ", netname)
 	}
 
 	var numerrors int
@@ -75,7 +90,7 @@ func main() {
 
 		fmt.Printf("------------------ RUN # %v\n", i)
 
-		netattachdefstr, usedlinenumber, err := runRobocni(*promptFilePath, *ollamaHost)
+		netattachdefstr, usedlinenumber, err := runRobocni(*promptFilePath, *ollamaHost, *ollamaPort, *ollamaModel)
 		if err != nil {
 			fmt.Printf("Error generating robocni net-attach-def, run #%d: %v\n", i, err)
 			numerrors++
@@ -181,6 +196,79 @@ func main() {
 
 	generateReport(totalruns, numerrors, numgenerationerrors, failedpodcreate, pingerrors, statsArray)
 
+}
+
+// introspectNodeNetwork retrieves the name of the first worker node
+func introspectNodeNetwork() error {
+	var nodename string
+	output, err := runKubectl("get nodes --no-headers")
+	if err != nil {
+		return err
+	}
+
+	// Chew up the lines and grab the first worker node.
+	lines := strings.Split(output, "\n")
+	for _, line := range lines {
+		// Skip empty lines
+		if line == "" {
+			continue
+		}
+
+		// Check if the line does not contain "control-plane" (indicating a worker node)
+		if !strings.Contains(line, "control-plane") {
+			// Split the line by whitespace and return the first field (node name)
+			fields := strings.Fields(line)
+			if len(fields) > 0 {
+				nodename = fields[0]
+				return nil
+			}
+		}
+	}
+
+	if nodename == "" {
+		return fmt.Errorf("no worker node found")
+	}
+
+	// Launch debugger pod
+	fmt.Printf("Launching debugger pod on node: %s\n", nodename)
+	debugPodName, err := launchDebuggerPod(nodename)
+	if err != nil {
+		return fmt.Errorf("Error launching debugger pod: %v\n", err)
+	}
+	fmt.Printf("Debugger pod launched: %s\n", debugPodName)
+
+	// Wait for debugger pod to be ready
+	err = waitForPodReady(debugPodName, 5*time.Minute)
+	if err != nil {
+		return fmt.Errorf("Error waiting 5 minutes for debugger pod to be ready: %v\n", err)
+	}
+
+	// Complete here: Now I need to run these two commands:
+	// kubectl exec -it node-debugger-kind-worker-7xlrb -- bash -c 'chroot /host ip a'
+	// and
+	// kubectl exec -it node-debugger-kind-worker-7xlrb -- bash -c 'chroot /host ip link show'
+	// each of those files should be written to a file, based on global static variables (so add those)
+
+	return nil
+
+}
+
+// Launches the debugger pod on a specified node and returns the debugger pod's name
+func launchDebuggerPod(nodeName string) (string, error) {
+	cmd := exec.Command("kubectl", "debug", fmt.Sprintf("node/%s", nodeName), "--image=fedora", "--", "sleep", "500")
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		return "", fmt.Errorf("failed to launch debugger pod: %v\nOutput: %s", err, string(output))
+	}
+
+	// Extract the debugger pod name using regex
+	re := regexp.MustCompile(`node-debugger-\S+`)
+	matches := re.FindStringSubmatch(string(output))
+	if len(matches) == 0 {
+		return "", fmt.Errorf("could not find debugger pod name in output")
+	}
+
+	return matches[0], nil
 }
 
 func generateReport(runNumber, numErrors, numGenerationErrors, failedPodCreate, pingErrors int, statsArray []Stats) {
@@ -404,9 +492,7 @@ func countLinesofHint(filePath string) (int, error) {
 	return numLines, nil
 }
 
-func runRobocni(filePath string, llmHost string) (string, int, error) {
-	// Replace with your file path
-
+func runRobocni(filePath string, llmHost string, llmPort string, llmModel string) (string, int, error) {
 	// Read the file
 	fileContent, err := ioutil.ReadFile(filePath)
 	if err != nil {
@@ -425,9 +511,15 @@ func runRobocni(filePath string, llmHost string) (string, int, error) {
 	randomLine := lines[usedlinenumber]
 
 	fmt.Println("User hint: ", randomLine)
-	// Create the command
-	// Replace 'yourRobocniBinaryPath' with the path to your robocni binary
-	cmd := exec.Command("robocni", randomLine)
+
+	// Create the command with flags
+	cmd := exec.Command(
+		"robocni",
+		"-host", llmHost,
+		"-model", llmModel,
+		"-port", llmPort,
+		randomLine, // Add user hint as an argument
+	)
 	cmd.Env = append(os.Environ(), "OLLAMA_HOST="+llmHost)
 
 	var out, stderr bytes.Buffer
@@ -436,7 +528,7 @@ func runRobocni(filePath string, llmHost string) (string, int, error) {
 
 	err = cmd.Run()
 	if err != nil {
-		fmt.Println("Command: robotcni " + randomLine)
+		fmt.Println("Command: robocni -host", llmHost, "-model", llmModel, "-port", llmPort, randomLine)
 		fmt.Println("Command stderr:", stderr.String())
 		fmt.Println("Command stdout:", out.String())
 		return "", -1, fmt.Errorf("robocni command failed: %w", err)
