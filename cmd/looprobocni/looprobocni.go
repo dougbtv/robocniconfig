@@ -22,6 +22,11 @@ type Stats struct {
 	Successes int
 }
 
+var (
+	iprouteOutputfile = "/tmp/ip_route_output.txt"
+	ipLinkOutputFile  = "/tmp/ip_link_output.txt"
+)
+
 func main() {
 
 	// Define flags
@@ -59,7 +64,6 @@ func main() {
 			fmt.Println("Error introspecting node network: ", err)
 			os.Exit(1)
 		}
-		fmt.Println("First worker node: ", netname)
 	}
 
 	var numerrors int
@@ -90,7 +94,7 @@ func main() {
 
 		fmt.Printf("------------------ RUN # %v\n", i)
 
-		netattachdefstr, usedlinenumber, err := runRobocni(*promptFilePath, *ollamaHost, *ollamaPort, *ollamaModel)
+		netattachdefstr, usedlinenumber, err := runRobocni(*promptFilePath, *ollamaHost, *ollamaPort, *ollamaModel, *introspectNetwork)
 		if err != nil {
 			fmt.Printf("Error generating robocni net-attach-def, run #%d: %v\n", i, err)
 			numerrors++
@@ -198,7 +202,7 @@ func main() {
 
 }
 
-// introspectNodeNetwork retrieves the name of the first worker node
+// introspectNodeNetwork retrieves the first worker node and runs introspection commands
 func introspectNodeNetwork() error {
 	var nodename string
 	output, err := runKubectl("get nodes --no-headers")
@@ -209,19 +213,13 @@ func introspectNodeNetwork() error {
 	// Chew up the lines and grab the first worker node.
 	lines := strings.Split(output, "\n")
 	for _, line := range lines {
-		// Skip empty lines
-		if line == "" {
+		if line == "" || strings.Contains(line, "control-plane") {
 			continue
 		}
-
-		// Check if the line does not contain "control-plane" (indicating a worker node)
-		if !strings.Contains(line, "control-plane") {
-			// Split the line by whitespace and return the first field (node name)
-			fields := strings.Fields(line)
-			if len(fields) > 0 {
-				nodename = fields[0]
-				return nil
-			}
+		fields := strings.Fields(line)
+		if len(fields) > 0 {
+			nodename = fields[0]
+			break
 		}
 	}
 
@@ -229,7 +227,6 @@ func introspectNodeNetwork() error {
 		return fmt.Errorf("no worker node found")
 	}
 
-	// Launch debugger pod
 	fmt.Printf("Launching debugger pod on node: %s\n", nodename)
 	debugPodName, err := launchDebuggerPod(nodename)
 	if err != nil {
@@ -237,20 +234,41 @@ func introspectNodeNetwork() error {
 	}
 	fmt.Printf("Debugger pod launched: %s\n", debugPodName)
 
-	// Wait for debugger pod to be ready
 	err = waitForPodReady(debugPodName, 5*time.Minute)
 	if err != nil {
 		return fmt.Errorf("Error waiting 5 minutes for debugger pod to be ready: %v\n", err)
 	}
 
-	// Complete here: Now I need to run these two commands:
-	// kubectl exec -it node-debugger-kind-worker-7xlrb -- bash -c 'chroot /host ip a'
-	// and
-	// kubectl exec -it node-debugger-kind-worker-7xlrb -- bash -c 'chroot /host ip link show'
-	// each of those files should be written to a file, based on global static variables (so add those)
+	// Run and save 'ip a' output
+	err = executeAndSaveOutput(debugPodName, "chroot /host ip route", iprouteOutputfile)
+	if err != nil {
+		return fmt.Errorf("Error saving 'ip route' output: %v", err)
+	}
 
+	// Run and save 'ip link show' output
+	err = executeAndSaveOutput(debugPodName, "chroot /host ip link show", ipLinkOutputFile)
+	if err != nil {
+		return fmt.Errorf("Error saving 'ip link show' output: %v", err)
+	}
+
+	fmt.Printf("Network introspection data saved to %s and %s\n", iprouteOutputfile, ipLinkOutputFile)
 	return nil
+}
 
+// executeAndSaveOutput runs a command in the debugger pod and saves the output to a file
+func executeAndSaveOutput(podName, command, outputFile string) error {
+	cmd := exec.Command("kubectl", "exec", "-it", podName, "--", "bash", "-c", command)
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		return fmt.Errorf("failed to run command in pod %s: %v\nOutput: %s", podName, err, string(output))
+	}
+
+	// Write output to the specified file
+	err = ioutil.WriteFile(outputFile, output, 0644)
+	if err != nil {
+		return fmt.Errorf("failed to write output to file %s: %v", outputFile, err)
+	}
+	return nil
 }
 
 // Launches the debugger pod on a specified node and returns the debugger pod's name
@@ -492,7 +510,7 @@ func countLinesofHint(filePath string) (int, error) {
 	return numLines, nil
 }
 
-func runRobocni(filePath string, llmHost string, llmPort string, llmModel string) (string, int, error) {
+func runRobocni(filePath string, llmHost string, llmPort string, llmModel string, introspect bool) (string, int, error) {
 	// Read the file
 	fileContent, err := ioutil.ReadFile(filePath)
 	if err != nil {
@@ -512,14 +530,27 @@ func runRobocni(filePath string, llmHost string, llmPort string, llmModel string
 
 	fmt.Println("User hint: ", randomLine)
 
-	// Create the command with flags
-	cmd := exec.Command(
-		"robocni",
-		"-host", llmHost,
-		"-model", llmModel,
-		"-port", llmPort,
-		randomLine, // Add user hint as an argument
-	)
+	var cmd *exec.Cmd
+	// Create the command with flags, depending on if we're introspecting.
+	if introspect {
+		cmd = exec.Command(
+			"robocni",
+			"-host", llmHost,
+			"-model", llmModel,
+			"-port", llmPort,
+			"-routefile", iprouteOutputfile,
+			"-linkfile", ipLinkOutputFile,
+			randomLine, // Add user hint as an argument
+		)
+	} else {
+		cmd = exec.Command(
+			"robocni",
+			"-host", llmHost,
+			"-model", llmModel,
+			"-port", llmPort,
+			randomLine, // Add user hint as an argument
+		)
+	}
 	cmd.Env = append(os.Environ(), "OLLAMA_HOST="+llmHost)
 
 	var out, stderr bytes.Buffer

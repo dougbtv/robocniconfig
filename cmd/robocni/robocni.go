@@ -51,7 +51,7 @@ func main() {
 	ollamaPort := flag.String("port", "11434", "The port address of the ollama service")
 	ollamaModel := flag.String("model", "llama2:13b", "The port address of the ollama service")
 	fileRoutes := flag.String("routefile", "", "File containing the output of 'ip route' command")
-	fileIPAddress := flag.String("ipafile", "", "File containing the output of 'ip address' command")
+	fileIPLinkShow := flag.String("linkfile", "", "File containing the output of 'ip link show' command")
 	help := flag.Bool("help", false, "Display help information")
 
 	// Parse the flags
@@ -87,14 +87,14 @@ func main() {
 
 	var ifs, routes string
 	// Check and read the interface file if provided
-	if *fileIPAddress != "" {
-		if _, err := os.Stat(*fileIPAddress); os.IsNotExist(err) {
-			fmt.Printf("Error: file %s does not exist\n", *fileIPAddress)
+	if *fileIPLinkShow != "" {
+		if _, err := os.Stat(*fileIPLinkShow); os.IsNotExist(err) {
+			fmt.Printf("Error: file %s does not exist\n", *fileIPLinkShow)
 			os.Exit(1)
 		} else {
-			content, err := ioutil.ReadFile(*fileIPAddress)
+			content, err := ioutil.ReadFile(*fileIPLinkShow)
 			if err != nil {
-				fmt.Printf("Error reading IP address file %s: %v\n", *fileIPAddress, err)
+				fmt.Printf("Error reading IP address file %s: %v\n", *fileIPLinkShow, err)
 				os.Exit(1)
 			}
 			ifs = string(content)
